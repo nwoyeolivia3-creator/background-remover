@@ -739,63 +739,534 @@
     </div>
 
     <script>
-        // JavaScript code would go here - same functionality as before
-        // but with updated class names and IDs to match the new UI
-        
-        // For the sake of brevity, I'm including a simplified version
-        // In a real implementation, you would include the full JavaScript
-        
+        let selectedColor = '#00ff00';
+        let currentMediaUrl = null;
+        let currentMediaType = null;
+        let isProcessingVideo = false;
+        let colorPickingActive = false;
+
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize the app with basic functionality
-            const uploadBtn = document.getElementById('uploadBtn');
-            const fileInput = document.getElementById('mediaUpload');
+            initializeApp();
+        });
+
+        function initializeApp() {
+            setupFileUpload();
+            setupSliders();
+            setupColorPicking();
+            setupActionButtons();
+            setupVideoControls();
+        }
+
+        function setupFileUpload() {
             const uploadArea = document.getElementById('uploadArea');
-            
+            const fileInput = document.getElementById('mediaUpload');
+            const uploadBtn = document.getElementById('uploadBtn');
+
             uploadBtn.addEventListener('click', () => fileInput.click());
             uploadArea.addEventListener('click', () => fileInput.click());
+
+            fileInput.addEventListener('change', handleFileUpload);
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, () => uploadArea.classList.add('drag-over'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('drag-over'), false);
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    handleFileUpload({ target: fileInput });
+                }
+            }, false);
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.match('video.*') && !file.type.match('image.*')) {
+                alert('Please upload a video or image file');
+                return;
+            }
+
+            currentMediaType = file.type.match('video.*') ? 'video' : 'image';
+            currentMediaUrl = URL.createObjectURL(file);
+            loadMedia(currentMediaUrl, currentMediaType);
+        }
+
+        function loadMedia(fileUrl, mediaType) {
+            const isVideo = mediaType === 'video';
+            const inputElement = isVideo ? 
+                document.getElementById('inputVideo') : 
+                document.getElementById('inputImage');
             
-            fileInput.addEventListener('change', function(e) {
-                if (e.target.files.length > 0) {
-                    // Show processing section
-                    document.getElementById('uploadSection').style.display = 'none';
-                    document.getElementById('processingSection').style.display = 'block';
-                    
-                    // Simulate loading
-                    setTimeout(() => {
-                        document.getElementById('originalPlaceholder').style.display = 'none';
-                        document.getElementById('inputImage').style.display = 'block';
-                        document.getElementById('inputImage').src = 'https://via.placeholder.com/600x400/7c3aed/ffffff?text=Your+Image+Here';
-                        document.getElementById('originalStats').textContent = '600 × 400';
-                        
-                        // Show processed result
-                        setTimeout(() => {
-                            document.getElementById('processedPlaceholder').style.display = 'none';
-                            document.getElementById('outputCanvas').style.display = 'block';
-                            document.getElementById('processedStats').textContent = 'Background removed';
-                            document.getElementById('downloadBtn').disabled = false;
-                        }, 1000);
-                    }, 1500);
+            // Reset any previous color picking
+            disableColorPicking();
+            
+            // Hide all media elements first
+            document.getElementById('inputVideo').style.display = 'none';
+            document.getElementById('inputImage').style.display = 'none';
+            document.getElementById('outputVideo').style.display = 'none';
+            document.getElementById('outputCanvas').style.display = 'none';
+            document.getElementById('originalVideoControls').style.display = 'none';
+            document.getElementById('processedVideoControls').style.display = 'none';
+            document.getElementById('processVideoBtn').style.display = 'none';
+            document.getElementById('videoProcessingNotice').style.display = 'none';
+            
+            document.getElementById('originalPlaceholder').style.display = 'block';
+            document.getElementById('processedPlaceholder').style.display = 'block';
+            
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('processingSection').style.display = 'block';
+            
+            if (isVideo) {
+                const video = inputElement;
+                // Clear any previous error handlers
+                video.onerror = null;
+                video.onloadedmetadata = null;
+                
+                video.onloadedmetadata = function() {
+                    video.style.display = 'block';
+                    document.getElementById('originalPlaceholder').style.display = 'none';
+                    document.getElementById('originalStats').textContent = 
+                        `${video.videoWidth} × ${video.videoHeight}`;
+                    document.getElementById('originalVideoControls').style.display = 'flex';
+                    document.getElementById('processVideoBtn').style.display = 'block';
+                };
+                video.onerror = function() {
+                    alert('Error loading video. Please try a different file.');
+                    resetApp();
+                };
+            } else {
+                const img = inputElement;
+                // Clear any previous error handlers
+                img.onerror = null;
+                img.onload = null;
+                
+                img.onload = function() {
+                    img.style.display = 'block';
+                    document.getElementById('originalPlaceholder').style.display = 'none';
+                    document.getElementById('originalStats').textContent = 
+                        `${img.naturalWidth} × ${img.naturalHeight}`;
+                };
+                img.onerror = function() {
+                    alert('Error loading image. Please try a different file.');
+                    resetApp();
+                };
+            }
+            
+            inputElement.src = fileUrl;
+        }
+
+        function setupSliders() {
+            const toleranceSlider = document.getElementById('toleranceSlider');
+            const toleranceValue = document.getElementById('toleranceValue');
+            
+            toleranceValue.textContent = toleranceSlider.value + '%';
+            
+            toleranceSlider.addEventListener('input', function() {
+                toleranceValue.textContent = this.value + '%';
+                
+                if (currentMediaUrl && currentMediaType === 'image') {
+                    removeSelectedColor();
                 }
             });
+        }
+
+        function setupColorPicking() {
+            document.getElementById('colorPickerBtn').addEventListener('click', enableColorPicking);
+        }
+
+        function enableColorPicking() {
+            if (!currentMediaUrl) {
+                alert('Please upload media first');
+                return;
+            }
             
-            // Reset button
-            document.getElementById('resetBtn').addEventListener('click', function() {
-                document.getElementById('uploadSection').style.display = 'block';
-                document.getElementById('processingSection').style.display = 'none';
-                document.getElementById('downloadBtn').disabled = true;
-                fileInput.value = '';
-            });
+            const mediaElement = currentMediaType === 'video' ? 
+                document.getElementById('inputVideo') : 
+                document.getElementById('inputImage');
+            const indicator = document.getElementById('colorPickingIndicator');
             
-            // Color picker button
-            document.getElementById('colorPickerBtn').addEventListener('click', function() {
-                alert("Click on the background color in your image to select it");
-            });
+            if (mediaElement.style.display === 'none') {
+                alert('Media is still loading. Please wait...');
+                return;
+            }
             
-            // Download button
-            document.getElementById('downloadBtn').addEventListener('click', function() {
-                alert("Your background-free image is downloading!");
+            colorPickingActive = true;
+            mediaElement.style.cursor = 'crosshair';
+            indicator.style.display = 'block';
+            
+            function pickColor(e) {
+                if (!colorPickingActive) return;
+                
+                const rect = mediaElement.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+                
+                indicator.style.left = (x + 10) + 'px';
+                indicator.style.top = (y + 10) + 'px';
+                
+                if (e.type === 'click') {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    if (currentMediaType === 'video') {
+                        canvas.width = mediaElement.videoWidth;
+                        canvas.height = mediaElement.videoHeight;
+                        ctx.drawImage(mediaElement, 0, 0);
+                    } else {
+                        canvas.width = mediaElement.naturalWidth;
+                        canvas.height = mediaElement.naturalHeight;
+                        ctx.drawImage(mediaElement, 0, 0);
+                    }
+                    
+                    const pixelX = (x / rect.width) * canvas.width;
+                    const pixelY = (y / rect.height) * canvas.height;
+                    const pixel = ctx.getImageData(pixelX, pixelY, 1, 1).data;
+                    const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+                    
+                    setColor(hex);
+                    
+                    if (currentMediaType === 'image') {
+                        removeSelectedColor();
+                    }
+                    
+                    disableColorPicking();
+                }
+            }
+            
+            mediaElement.addEventListener('mousemove', pickColor);
+            mediaElement.addEventListener('click', pickColor);
+        }
+
+        function disableColorPicking() {
+            colorPickingActive = false;
+            const mediaElement = currentMediaType === 'video' ? 
+                document.getElementById('inputVideo') : 
+                document.getElementById('inputImage');
+            const indicator = document.getElementById('colorPickingIndicator');
+            
+            if (mediaElement) {
+                mediaElement.style.cursor = '';
+                mediaElement.removeEventListener('mousemove', () => {});
+                mediaElement.removeEventListener('click', () => {});
+            }
+            indicator.style.display = 'none';
+        }
+
+        function setColor(color) {
+            selectedColor = color;
+            document.getElementById('colorPreview').style.backgroundColor = color;
+            document.getElementById('colorValue').textContent = color.toUpperCase();
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+
+        function setupVideoControls() {
+            document.getElementById('playPauseBtn').addEventListener('click', function() {
+                const video = document.getElementById('inputVideo');
+                if (video.paused) {
+                    video.play();
+                } else {
+                    video.pause();
+                }
             });
-        });
+
+            document.getElementById('restartBtn').addEventListener('click', function() {
+                const video = document.getElementById('inputVideo');
+                video.currentTime = 0;
+                video.play();
+            });
+
+            document.getElementById('downloadVideoBtn').addEventListener('click', function() {
+                const video = document.getElementById('outputVideo');
+                if (video.src) {
+                    const link = document.createElement('a');
+                    link.download = 'background-removed-video.webm';
+                    link.href = video.src;
+                    link.click();
+                }
+            });
+        }
+
+        function setupActionButtons() {
+            document.getElementById('processVideoBtn').addEventListener('click', processVideo);
+            document.getElementById('downloadBtn').addEventListener('click', downloadResult);
+            document.getElementById('resetBtn').addEventListener('click', resetApp);
+        }
+
+        function removeSelectedColor() {
+            const img = document.getElementById('inputImage');
+            const canvas = document.getElementById('outputCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            if (!img.src || img.style.display === 'none') return;
+            
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            
+            ctx.drawImage(img, 0, 0);
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            const hex = selectedColor.replace('#', '');
+            const targetR = parseInt(hex.substr(0, 2), 16);
+            const targetG = parseInt(hex.substr(2, 2), 16);
+            const targetB = parseInt(hex.substr(4, 2), 16);
+            
+            const tolerance = parseInt(document.getElementById('toleranceSlider').value) * 2.55;
+            
+            let pixelsChanged = 0;
+            let totalPixels = data.length / 4;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                
+                const distance = Math.sqrt(
+                    Math.pow(r - targetR, 2) +
+                    Math.pow(g - targetG, 2) +
+                    Math.pow(b - targetB, 2)
+                );
+                
+                if (distance < tolerance) {
+                    data[i] = 0;
+                    data[i + 1] = 0;
+                    data[i + 2] = 0;
+                    pixelsChanged++;
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            canvas.style.display = 'block';
+            document.getElementById('processedPlaceholder').style.display = 'none';
+            
+            const percentChanged = Math.round((pixelsChanged / totalPixels) * 100);
+            document.getElementById('processedStats').textContent = 
+                `${percentChanged}% of background removed`;
+            
+            document.getElementById('downloadBtn').disabled = false;
+        }
+
+        async function processVideo() {
+            if (isProcessingVideo) return;
+            
+            const inputVideo = document.getElementById('inputVideo');
+            const outputCanvas = document.getElementById('outputCanvas');
+            const ctx = outputCanvas.getContext('2d');
+            
+            if (!inputVideo.src || inputVideo.style.display === 'none') return;
+            
+            isProcessingVideo = true;
+            document.getElementById('videoProcessingNotice').style.display = 'block';
+            document.getElementById('processVideoBtn').disabled = true;
+            
+            const video = inputVideo;
+            const duration = video.duration;
+            const fps = 10;
+            const totalFrames = Math.floor(duration * fps);
+            
+            outputCanvas.width = video.videoWidth;
+            outputCanvas.height = video.videoHeight;
+            
+            const hex = selectedColor.replace('#', '');
+            const targetR = parseInt(hex.substr(0, 2), 16);
+            const targetG = parseInt(hex.substr(2, 2), 16);
+            const targetB = parseInt(hex.substr(4, 2), 16);
+            const tolerance = parseInt(document.getElementById('toleranceSlider').value) * 2.55;
+            
+            const outputVideo = document.getElementById('outputVideo');
+            const chunks = [];
+            
+            if (!window.MediaRecorder) {
+                alert('Your browser does not support video recording. Please try Chrome or Firefox.');
+                isProcessingVideo = false;
+                document.getElementById('processVideoBtn').disabled = false;
+                document.getElementById('videoProcessingNotice').style.display = 'none';
+                return;
+            }
+            
+            let mediaRecorder;
+            try {
+                mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
+                    mimeType: 'video/webm; codecs=vp9'
+                });
+            } catch (e) {
+                try {
+                    mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
+                        mimeType: 'video/webm'
+                    });
+                } catch (e2) {
+                    alert('Your browser does not support video recording. Please try Chrome or Firefox.');
+                    isProcessingVideo = false;
+                    document.getElementById('processVideoBtn').disabled = false;
+                    document.getElementById('videoProcessingNotice').style.display = 'none';
+                    return;
+                }
+            }
+            
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    chunks.push(e.data);
+                }
+            };
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                outputVideo.src = url;
+                
+                outputVideo.style.display = 'block';
+                outputCanvas.style.display = 'none';
+                document.getElementById('processedPlaceholder').style.display = 'none';
+                document.getElementById('processedVideoControls').style.display = 'flex';
+                document.getElementById('processedStats').textContent = 'Video background removed successfully';
+                document.getElementById('downloadBtn').disabled = false;
+                document.getElementById('videoProcessingNotice').style.display = 'none';
+                document.getElementById('processVideoBtn').disabled = false;
+                isProcessingVideo = false;
+            };
+            
+            mediaRecorder.start();
+            
+            for (let i = 0; i < totalFrames; i++) {
+                if (!isProcessingVideo) break;
+                
+                const time = (i / fps);
+                video.currentTime = time;
+                
+                await new Promise(resolve => {
+                    video.onseeked = () => {
+                        ctx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+                        
+                        const imageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+                        const data = imageData.data;
+                        
+                        for (let j = 0; j < data.length; j += 4) {
+                            const r = data[j];
+                            const g = data[j + 1];
+                            const b = data[j + 2];
+                            
+                            const distance = Math.sqrt(
+                                Math.pow(r - targetR, 2) +
+                                Math.pow(g - targetG, 2) +
+                                Math.pow(b - targetB, 2)
+                            );
+                            
+                            if (distance < tolerance) {
+                                data[j] = 0;
+                                data[j + 1] = 0;
+                                data[j + 2] = 0;
+                            }
+                        }
+                        
+                        ctx.putImageData(imageData, 0, 0);
+                        resolve();
+                    };
+                });
+            }
+            
+            if (isProcessingVideo) {
+                mediaRecorder.stop();
+            }
+        }
+
+        function downloadResult() {
+            if (currentMediaType === 'image') {
+                const canvas = document.getElementById('outputCanvas');
+                const link = document.createElement('a');
+                link.download = 'background-removed.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } else {
+                const video = document.getElementById('outputVideo');
+                if (video.src) {
+                    const link = document.createElement('a');
+                    link.download = 'background-removed-video.webm';
+                    link.href = video.src;
+                    link.click();
+                }
+            }
+        }
+
+        function resetApp() {
+            // Stop any ongoing processing
+            isProcessingVideo = false;
+            disableColorPicking();
+            
+            // Pause and reset videos
+            const inputVideo = document.getElementById('inputVideo');
+            if (inputVideo) {
+                inputVideo.pause();
+                inputVideo.currentTime = 0;
+                inputVideo.src = '';
+            }
+            
+            const outputVideo = document.getElementById('outputVideo');
+            if (outputVideo) {
+                outputVideo.pause();
+                outputVideo.currentTime = 0;
+                if (outputVideo.src) {
+                    URL.revokeObjectURL(outputVideo.src);
+                    outputVideo.src = '';
+                }
+            }
+            
+            // Clean up media URLs
+            if (currentMediaUrl) {
+                URL.revokeObjectURL(currentMediaUrl);
+                currentMediaUrl = null;
+            }
+            
+            currentMediaType = null;
+            
+            // Reset file input
+            document.getElementById('mediaUpload').value = '';
+            
+            // Reset all displays
+            document.getElementById('inputVideo').style.display = 'none';
+            document.getElementById('inputImage').style.display = 'none';
+            document.getElementById('outputVideo').style.display = 'none';
+            document.getElementById('outputCanvas').style.display = 'none';
+            
+            document.getElementById('originalVideoControls').style.display = 'none';
+            document.getElementById('processedVideoControls').style.display = 'none';
+            document.getElementById('processVideoBtn').style.display = 'none';
+            document.getElementById('videoProcessingNotice').style.display = 'none';
+            
+            document.getElementById('originalPlaceholder').style.display = 'block';
+            document.getElementById('processedPlaceholder').style.display = 'block';
+            
+            document.getElementById('originalStats').textContent = '';
+            document.getElementById('processedStats').textContent = '';
+            
+            document.getElementById('downloadBtn').disabled = true;
+            document.getElementById('processVideoBtn').disabled = false;
+            
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('processingSection').style.display = 'none';
+        }
     </script>
 </body>
 </html>

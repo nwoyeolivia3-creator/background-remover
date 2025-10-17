@@ -491,6 +491,8 @@
         let selectedColor = '#00ff00';
         let currentMediaUrl = null;
         let currentMediaType = null;
+        let isProcessingVideo = false;
+        let colorPickingActive = false;
 
         document.addEventListener('DOMContentLoaded', function() {
             initializeApp();
@@ -509,7 +511,6 @@
             const fileInput = document.getElementById('mediaUpload');
             const uploadBtn = document.getElementById('uploadBtn');
 
-            uploadArea.addEventListener('click', () => fileInput.click());
             uploadBtn.addEventListener('click', () => fileInput.click());
 
             fileInput.addEventListener('change', handleFileUpload);
@@ -560,6 +561,9 @@
                 document.getElementById('inputVideo') : 
                 document.getElementById('inputImage');
             
+            // Reset any previous color picking
+            disableColorPicking();
+            
             // Hide all media elements first
             document.getElementById('inputVideo').style.display = 'none';
             document.getElementById('inputImage').style.display = 'none';
@@ -578,6 +582,10 @@
             
             if (isVideo) {
                 const video = inputElement;
+                // Clear any previous error handlers
+                video.onerror = null;
+                video.onloadedmetadata = null;
+                
                 video.onloadedmetadata = function() {
                     video.style.display = 'block';
                     document.getElementById('originalPlaceholder').style.display = 'none';
@@ -585,8 +593,6 @@
                         `${video.videoWidth} × ${video.videoHeight}`;
                     document.getElementById('originalVideoControls').style.display = 'flex';
                     document.getElementById('processVideoBtn').style.display = 'block';
-                    
-                    enableColorPicking();
                 };
                 video.onerror = function() {
                     alert('Error loading video. Please try a different file.');
@@ -594,13 +600,15 @@
                 };
             } else {
                 const img = inputElement;
+                // Clear any previous error handlers
+                img.onerror = null;
+                img.onload = null;
+                
                 img.onload = function() {
                     img.style.display = 'block';
                     document.getElementById('originalPlaceholder').style.display = 'none';
                     document.getElementById('originalStats').textContent = 
                         `${img.naturalWidth} × ${img.naturalHeight}`;
-                    
-                    enableColorPicking();
                 };
                 img.onerror = function() {
                     alert('Error loading image. Please try a different file.');
@@ -646,10 +654,13 @@
                 return;
             }
             
+            colorPickingActive = true;
             mediaElement.style.cursor = 'crosshair';
             indicator.style.display = 'block';
             
             function pickColor(e) {
+                if (!colorPickingActive) return;
+                
                 const rect = mediaElement.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
@@ -684,16 +695,27 @@
                         removeSelectedColor();
                     }
                     
-                    mediaElement.style.cursor = '';
-                    indicator.style.display = 'none';
-                    
-                    mediaElement.removeEventListener('mousemove', pickColor);
-                    mediaElement.removeEventListener('click', pickColor);
+                    disableColorPicking();
                 }
             }
             
             mediaElement.addEventListener('mousemove', pickColor);
             mediaElement.addEventListener('click', pickColor);
+        }
+
+        function disableColorPicking() {
+            colorPickingActive = false;
+            const mediaElement = currentMediaType === 'video' ? 
+                document.getElementById('inputVideo') : 
+                document.getElementById('inputImage');
+            const indicator = document.getElementById('colorPickingIndicator');
+            
+            if (mediaElement) {
+                mediaElement.style.cursor = '';
+                mediaElement.removeEventListener('mousemove', () => {});
+                mediaElement.removeEventListener('click', () => {});
+            }
+            indicator.style.display = 'none';
         }
 
         function setColor(color) {
@@ -796,18 +818,21 @@
         }
 
         async function processVideo() {
+            if (isProcessingVideo) return;
+            
             const inputVideo = document.getElementById('inputVideo');
             const outputCanvas = document.getElementById('outputCanvas');
             const ctx = outputCanvas.getContext('2d');
             
             if (!inputVideo.src || inputVideo.style.display === 'none') return;
             
+            isProcessingVideo = true;
             document.getElementById('videoProcessingNotice').style.display = 'block';
             document.getElementById('processVideoBtn').disabled = true;
             
             const video = inputVideo;
             const duration = video.duration;
-            const fps = 10; // Process 10 frames per second for reasonable speed
+            const fps = 10;
             const totalFrames = Math.floor(duration * fps);
             
             outputCanvas.width = video.videoWidth;
@@ -819,12 +844,35 @@
             const targetB = parseInt(hex.substr(4, 2), 16);
             const tolerance = parseInt(document.getElementById('toleranceSlider').value) * 2.55;
             
-            // Create a new video element for output
             const outputVideo = document.getElementById('outputVideo');
             const chunks = [];
-            const mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
-                mimeType: 'video/webm; codecs=vp9'
-            });
+            
+            if (!window.MediaRecorder) {
+                alert('Your browser does not support video recording. Please try Chrome or Firefox.');
+                isProcessingVideo = false;
+                document.getElementById('processVideoBtn').disabled = false;
+                document.getElementById('videoProcessingNotice').style.display = 'none';
+                return;
+            }
+            
+            let mediaRecorder;
+            try {
+                mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
+                    mimeType: 'video/webm; codecs=vp9'
+                });
+            } catch (e) {
+                try {
+                    mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
+                        mimeType: 'video/webm'
+                    });
+                } catch (e2) {
+                    alert('Your browser does not support video recording. Please try Chrome or Firefox.');
+                    isProcessingVideo = false;
+                    document.getElementById('processVideoBtn').disabled = false;
+                    document.getElementById('videoProcessingNotice').style.display = 'none';
+                    return;
+                }
+            }
             
             mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) {
@@ -845,21 +893,21 @@
                 document.getElementById('downloadBtn').disabled = false;
                 document.getElementById('videoProcessingNotice').style.display = 'none';
                 document.getElementById('processVideoBtn').disabled = false;
+                isProcessingVideo = false;
             };
             
             mediaRecorder.start();
             
-            // Process each frame
             for (let i = 0; i < totalFrames; i++) {
+                if (!isProcessingVideo) break;
+                
                 const time = (i / fps);
                 video.currentTime = time;
                 
                 await new Promise(resolve => {
                     video.onseeked = () => {
-                        // Draw current frame
                         ctx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
                         
-                        // Process the frame to remove selected color
                         const imageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
                         const data = imageData.data;
                         
@@ -887,7 +935,9 @@
                 });
             }
             
-            mediaRecorder.stop();
+            if (isProcessingVideo) {
+                mediaRecorder.stop();
+            }
         }
 
         function downloadResult() {
@@ -899,29 +949,53 @@
                 link.click();
             } else {
                 const video = document.getElementById('outputVideo');
-                const link = document.createElement('a');
-                link.download = 'background-removed-video.webm';
-                link.href = video.src;
-                link.click();
+                if (video.src) {
+                    const link = document.createElement('a');
+                    link.download = 'background-removed-video.webm';
+                    link.href = video.src;
+                    link.click();
+                }
             }
         }
 
         function resetApp() {
-            if (currentMediaUrl) {
-                URL.revokeObjectURL(currentMediaUrl);
+            // Stop any ongoing processing
+            isProcessingVideo = false;
+            disableColorPicking();
+            
+            // Pause and reset videos
+            const inputVideo = document.getElementById('inputVideo');
+            if (inputVideo) {
+                inputVideo.pause();
+                inputVideo.currentTime = 0;
+                inputVideo.src = '';
             }
             
-            currentMediaUrl = null;
+            const outputVideo = document.getElementById('outputVideo');
+            if (outputVideo) {
+                outputVideo.pause();
+                outputVideo.currentTime = 0;
+                if (outputVideo.src) {
+                    URL.revokeObjectURL(outputVideo.src);
+                    outputVideo.src = '';
+                }
+            }
+            
+            // Clean up media URLs
+            if (currentMediaUrl) {
+                URL.revokeObjectURL(currentMediaUrl);
+                currentMediaUrl = null;
+            }
+            
             currentMediaType = null;
             
+            // Reset file input
             document.getElementById('mediaUpload').value = '';
             
+            // Reset all displays
             document.getElementById('inputVideo').style.display = 'none';
-            document.getElementById('inputVideo').src = '';
             document.getElementById('inputImage').style.display = 'none';
-            document.getElementById('inputImage').src = '';
             document.getElementById('outputVideo').style.display = 'none';
-            document.getElementById('outputVideo').src = '';
             document.getElementById('outputCanvas').style.display = 'none';
             
             document.getElementById('originalVideoControls').style.display = 'none';

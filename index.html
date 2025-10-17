@@ -6,6 +6,7 @@
     <title>Magic Background Remover</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        /* Your existing CSS remains the same */
         * {
             margin: 0;
             padding: 0;
@@ -501,12 +502,38 @@
             border-radius: 12px;
             overflow: hidden;
             box-shadow: var(--shadow);
+            transition: all 0.3s ease;
         }
 
         .demo-video iframe {
             width: 100%;
             height: 250px;
             border: none;
+        }
+
+        .video-toggle {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .video-toggle-btn {
+            background: var(--background);
+            border: 2px solid var(--border);
+            color: var(--text-light);
+            padding: 10px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .video-toggle-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
         }
 
         footer {
@@ -724,12 +751,19 @@
                 </div>
             </div>
 
-            <div class="demo-video">
+            <div class="demo-video" id="demoVideo">
                 <h3 class="tutorial-title">
                     <i class="fas fa-video"></i>
                     See It In Action
                 </h3>
                 <iframe src="https://www.youtube.com/embed/LIopAoYIMVQ" title="Background Removal Tutorial" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                
+                <div class="video-toggle">
+                    <button class="video-toggle-btn" id="toggleVideoBtn">
+                        <i class="fas fa-eye-slash"></i>
+                        Hide Video
+                    </button>
+                </div>
             </div>
         </aside>
 
@@ -744,6 +778,7 @@
         let currentMediaType = null;
         let isProcessingVideo = false;
         let colorPickingActive = false;
+        let isVideoVisible = true;
 
         document.addEventListener('DOMContentLoaded', function() {
             initializeApp();
@@ -755,8 +790,29 @@
             setupColorPicking();
             setupActionButtons();
             setupVideoControls();
+            setupVideoToggle();
         }
 
+        function setupVideoToggle() {
+            const toggleBtn = document.getElementById('toggleVideoBtn');
+            const demoVideo = document.getElementById('demoVideo');
+            
+            toggleBtn.addEventListener('click', function() {
+                if (isVideoVisible) {
+                    // Hide video
+                    demoVideo.style.display = 'none';
+                    toggleBtn.innerHTML = '<i class="fas fa-eye"></i> Show Video';
+                    isVideoVisible = false;
+                } else {
+                    // Show video
+                    demoVideo.style.display = 'block';
+                    toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Video';
+                    isVideoVisible = true;
+                }
+            });
+        }
+
+        // The rest of your existing JavaScript functions remain the same
         function setupFileUpload() {
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('mediaUpload');

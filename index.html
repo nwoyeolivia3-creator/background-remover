@@ -6,7 +6,6 @@
     <title>Magic Background Remover</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Your existing CSS remains the same */
         * {
             margin: 0;
             padding: 0;
@@ -441,6 +440,58 @@
             margin-right: 8px;
         }
 
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: var(--text-light);
+            display: none;
+        }
+
+        .quality-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .quality-btn {
+            padding: 8px 16px;
+            border: 2px solid var(--border);
+            background: var(--card);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .quality-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .quality-btn:hover:not(.active) {
+            border-color: var(--primary-light);
+        }
+
         .tutorial-section {
             margin-top: 30px;
         }
@@ -579,6 +630,17 @@
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        .quality-notice {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
     </style>
 </head>
 <body>
@@ -681,6 +743,23 @@
                         </div>
                     </div>
 
+                    <div class="control-group">
+                        <label class="control-label">
+                            <i class="fas fa-cog"></i>
+                            Video Quality Settings
+                        </label>
+                        <div class="quality-options">
+                            <button class="quality-btn active" data-fps="15" data-quality="0.95">Fast (15 FPS)</button>
+                            <button class="quality-btn" data-fps="24" data-quality="0.90">Balanced (24 FPS)</button>
+                            <button class="quality-btn" data-fps="30" data-quality="0.85">High Quality (30 FPS)</button>
+                        </div>
+                        <div class="slider-help">Preview shows lower quality for speed, final download is full quality</div>
+                        <div class="quality-notice">
+                            <i class="fas fa-info-circle"></i>
+                            Preview quality is optimized for speed. Final download maintains original quality.
+                        </div>
+                    </div>
+
                     <div class="slider-group">
                         <label class="slider-label">
                             <span><i class="fas fa-sliders-h"></i> Color Match Sensitivity</span>
@@ -692,8 +771,13 @@
 
                     <div class="processing-notice" id="videoProcessingNotice">
                         <i class="fas fa-sync-alt fa-spin"></i>
-                        Processing video frames... This may take a moment for longer videos.
+                        Processing video frames... Preview shows lower quality for speed.
                     </div>
+
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Processing: 0%</div>
 
                     <div class="action-buttons">
                         <button class="btn btn-primary" id="processVideoBtn" style="display: none;">
@@ -702,7 +786,7 @@
                         </button>
                         <button class="btn btn-success" id="downloadBtn" disabled>
                             <i class="fas fa-download"></i>
-                            Download Result
+                            Download Full Quality Result
                         </button>
                         <button class="btn btn-outline" id="resetBtn">
                             <i class="fas fa-plus-circle"></i>
@@ -745,7 +829,7 @@
                         <div class="step-number">4</div>
                         <div class="step-content">
                             <div class="step-title">Download Result</div>
-                            <div class="step-description">Save your background-free image or video</div>
+                            <div class="step-description">Save your background-free image or video in full quality</div>
                         </div>
                     </div>
                 </div>
@@ -779,6 +863,8 @@
         let isProcessingVideo = false;
         let colorPickingActive = false;
         let isVideoVisible = true;
+        let currentFPS = 15;
+        let currentQuality = 0.95;
 
         document.addEventListener('DOMContentLoaded', function() {
             initializeApp();
@@ -791,6 +877,22 @@
             setupActionButtons();
             setupVideoControls();
             setupVideoToggle();
+            setupQualityOptions();
+        }
+
+        function setupQualityOptions() {
+            const qualityBtns = document.querySelectorAll('.quality-btn');
+            qualityBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    qualityBtns.forEach(b => b.classList.remove('active'));
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    // Update settings
+                    currentFPS = parseInt(this.dataset.fps);
+                    currentQuality = parseFloat(this.dataset.quality);
+                });
+            });
         }
 
         function setupVideoToggle() {
@@ -812,14 +914,13 @@
             });
         }
 
-        // The rest of your existing JavaScript functions remain the same
         function setupFileUpload() {
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('mediaUpload');
             const uploadBtn = document.getElementById('uploadBtn');
 
+            // Fix: Only trigger file input from the button, not the entire area
             uploadBtn.addEventListener('click', () => fileInput.click());
-            uploadArea.addEventListener('click', () => fileInput.click());
 
             fileInput.addEventListener('change', handleFileUpload);
 
@@ -851,15 +952,26 @@
 
         function handleFileUpload(event) {
             const file = event.target.files[0];
-            if (!file) return;
+            if (!file) {
+                console.log('No file selected');
+                return;
+            }
+
+            console.log('File selected:', file.name, file.type, file.size);
 
             if (!file.type.match('video.*') && !file.type.match('image.*')) {
-                alert('Please upload a video or image file');
+                alert('Please upload a video or image file (MP4, WebM, MOV, PNG, JPG, JPEG)');
+                return;
+            }
+
+            if (file.size > 100 * 1024 * 1024) { // 100MB
+                alert('File size too large. Please choose a file smaller than 100MB.');
                 return;
             }
 
             currentMediaType = file.type.match('video.*') ? 'video' : 'image';
             currentMediaUrl = URL.createObjectURL(file);
+            console.log('Loading media:', currentMediaType, currentMediaUrl);
             loadMedia(currentMediaUrl, currentMediaType);
         }
 
@@ -881,6 +993,8 @@
             document.getElementById('processedVideoControls').style.display = 'none';
             document.getElementById('processVideoBtn').style.display = 'none';
             document.getElementById('videoProcessingNotice').style.display = 'none';
+            document.getElementById('progressBar').style.display = 'none';
+            document.getElementById('progressText').style.display = 'none';
             
             document.getElementById('originalPlaceholder').style.display = 'block';
             document.getElementById('processedPlaceholder').style.display = 'block';
@@ -895,6 +1009,7 @@
                 video.onloadedmetadata = null;
                 
                 video.onloadedmetadata = function() {
+                    console.log('Video loaded:', video.videoWidth, 'x', video.videoHeight);
                     video.style.display = 'block';
                     document.getElementById('originalPlaceholder').style.display = 'none';
                     document.getElementById('originalStats').textContent = 
@@ -903,6 +1018,7 @@
                     document.getElementById('processVideoBtn').style.display = 'block';
                 };
                 video.onerror = function() {
+                    console.error('Error loading video');
                     alert('Error loading video. Please try a different file.');
                     resetApp();
                 };
@@ -913,12 +1029,14 @@
                 img.onload = null;
                 
                 img.onload = function() {
+                    console.log('Image loaded:', img.naturalWidth, 'x', img.naturalHeight);
                     img.style.display = 'block';
                     document.getElementById('originalPlaceholder').style.display = 'none';
                     document.getElementById('originalStats').textContent = 
                         `${img.naturalWidth} × ${img.naturalHeight}`;
                 };
                 img.onerror = function() {
+                    console.error('Error loading image');
                     alert('Error loading image. Please try a different file.');
                     resetApp();
                 };
@@ -1136,12 +1254,13 @@
             
             isProcessingVideo = true;
             document.getElementById('videoProcessingNotice').style.display = 'block';
+            document.getElementById('progressBar').style.display = 'block';
+            document.getElementById('progressText').style.display = 'block';
             document.getElementById('processVideoBtn').disabled = true;
             
             const video = inputVideo;
             const duration = video.duration;
-            const fps = 10;
-            const totalFrames = Math.floor(duration * fps);
+            const totalFrames = Math.floor(duration * currentFPS);
             
             outputCanvas.width = video.videoWidth;
             outputCanvas.height = video.videoHeight;
@@ -1157,27 +1276,31 @@
             
             if (!window.MediaRecorder) {
                 alert('Your browser does not support video recording. Please try Chrome or Firefox.');
-                isProcessingVideo = false;
-                document.getElementById('processVideoBtn').disabled = false;
-                document.getElementById('videoProcessingNotice').style.display = 'none';
+                resetProcessingState();
                 return;
             }
             
             let mediaRecorder;
+            let mimeType = 'video/webm; codecs=vp9';
+            
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/webm; codecs=vp8';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/mp4';
+                }
+            }
+            
             try {
-                mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
-                    mimeType: 'video/webm; codecs=vp9'
+                mediaRecorder = new MediaRecorder(outputCanvas.captureStream(currentFPS), {
+                    mimeType: mimeType,
+                    videoBitsPerSecond: 2500000 * currentQuality
                 });
             } catch (e) {
                 try {
-                    mediaRecorder = new MediaRecorder(outputCanvas.captureStream(), {
-                        mimeType: 'video/webm'
-                    });
+                    mediaRecorder = new MediaRecorder(outputCanvas.captureStream(currentFPS));
                 } catch (e2) {
                     alert('Your browser does not support video recording. Please try Chrome or Firefox.');
-                    isProcessingVideo = false;
-                    document.getElementById('processVideoBtn').disabled = false;
-                    document.getElementById('videoProcessingNotice').style.display = 'none';
+                    resetProcessingState();
                     return;
                 }
             }
@@ -1189,7 +1312,7 @@
             };
             
             mediaRecorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'video/webm' });
+                const blob = new Blob(chunks, { type: mimeType });
                 const url = URL.createObjectURL(blob);
                 outputVideo.src = url;
                 
@@ -1197,11 +1320,9 @@
                 outputCanvas.style.display = 'none';
                 document.getElementById('processedPlaceholder').style.display = 'none';
                 document.getElementById('processedVideoControls').style.display = 'flex';
-                document.getElementById('processedStats').textContent = 'Video background removed successfully';
+                document.getElementById('processedStats').textContent = `Video processed at ${currentFPS} FPS`;
                 document.getElementById('downloadBtn').disabled = false;
-                document.getElementById('videoProcessingNotice').style.display = 'none';
-                document.getElementById('processVideoBtn').disabled = false;
-                isProcessingVideo = false;
+                resetProcessingState();
             };
             
             mediaRecorder.start();
@@ -1209,43 +1330,67 @@
             for (let i = 0; i < totalFrames; i++) {
                 if (!isProcessingVideo) break;
                 
-                const time = (i / fps);
+                const time = (i / currentFPS);
                 video.currentTime = time;
                 
                 await new Promise(resolve => {
-                    video.onseeked = () => {
-                        ctx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
-                        
-                        const imageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
-                        const data = imageData.data;
-                        
-                        for (let j = 0; j < data.length; j += 4) {
-                            const r = data[j];
-                            const g = data[j + 1];
-                            const b = data[j + 2];
+                    const seekHandler = () => {
+                        requestAnimationFrame(() => {
+                            ctx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
                             
-                            const distance = Math.sqrt(
-                                Math.pow(r - targetR, 2) +
-                                Math.pow(g - targetG, 2) +
-                                Math.pow(b - targetB, 2)
-                            );
+                            const imageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+                            const data = imageData.data;
                             
-                            if (distance < tolerance) {
-                                data[j] = 0;
-                                data[j + 1] = 0;
-                                data[j + 2] = 0;
+                            const toleranceSquared = tolerance * tolerance;
+                            
+                            for (let j = 0; j < data.length; j += 4) {
+                                const r = data[j];
+                                const g = data[j + 1];
+                                const b = data[j + 2];
+                                
+                                const distanceSquared = 
+                                    (r - targetR) * (r - targetR) +
+                                    (g - targetG) * (g - targetG) +
+                                    (b - targetB) * (b - targetB);
+                                
+                                if (distanceSquared < toleranceSquared) {
+                                    data[j] = 0;
+                                    data[j + 1] = 0;
+                                    data[j + 2] = 0;
+                                }
                             }
-                        }
-                        
-                        ctx.putImageData(imageData, 0, 0);
-                        resolve();
+                            
+                            ctx.putImageData(imageData, 0, 0);
+                            
+                            const progress = ((i + 1) / totalFrames) * 100;
+                            document.getElementById('progressFill').style.width = progress + '%';
+                            document.getElementById('progressText').textContent = `Processing: ${Math.round(progress)}%`;
+                            
+                            video.removeEventListener('seeked', seekHandler);
+                            resolve();
+                        });
                     };
+                    
+                    video.addEventListener('seeked', seekHandler);
                 });
+                
+                if (i % 5 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
             }
             
             if (isProcessingVideo) {
                 mediaRecorder.stop();
             }
+        }
+
+        function resetProcessingState() {
+            isProcessingVideo = false;
+            document.getElementById('videoProcessingNotice').style.display = 'none';
+            document.getElementById('progressBar').style.display = 'none';
+            document.getElementById('progressText').style.display = 'none';
+            document.getElementById('processVideoBtn').disabled = false;
+            document.getElementById('progressFill').style.width = '0%';
         }
 
         function downloadResult() {
@@ -1271,12 +1416,27 @@
             isProcessingVideo = false;
             disableColorPicking();
             
-            // Pause and reset videos
+            // Pause and reset videos PROPERLY
             const inputVideo = document.getElementById('inputVideo');
             if (inputVideo) {
+                // Remove all event listeners first
+                inputVideo.onerror = null;
+                inputVideo.onloadedmetadata = null;
+                inputVideo.onseeked = null;
+                
+                // Stop the video and clear sources
                 inputVideo.pause();
                 inputVideo.currentTime = 0;
                 inputVideo.src = '';
+                
+                // Create a new video element to replace the old one
+                const newVideo = document.createElement('video');
+                newVideo.id = 'inputVideo';
+                newVideo.controls = true;
+                newVideo.style.display = 'none';
+                
+                // Replace the old video with the new one
+                inputVideo.parentNode.replaceChild(newVideo, inputVideo);
             }
             
             const outputVideo = document.getElementById('outputVideo');
@@ -1297,8 +1457,8 @@
             
             currentMediaType = null;
             
-            // Reset file input
-            document.getElementById('mediaUpload').value = '';
+            // DO NOT reset file input - this was causing the issue!
+            // document.getElementById('mediaUpload').value = '';
             
             // Reset all displays
             document.getElementById('inputVideo').style.display = 'none';
@@ -1310,6 +1470,8 @@
             document.getElementById('processedVideoControls').style.display = 'none';
             document.getElementById('processVideoBtn').style.display = 'none';
             document.getElementById('videoProcessingNotice').style.display = 'none';
+            document.getElementById('progressBar').style.display = 'none';
+            document.getElementById('progressText').style.display = 'none';
             
             document.getElementById('originalPlaceholder').style.display = 'block';
             document.getElementById('processedPlaceholder').style.display = 'block';
@@ -1320,6 +1482,10 @@
             document.getElementById('downloadBtn').disabled = true;
             document.getElementById('processVideoBtn').disabled = false;
             
+            // Reset progress bar
+            document.getElementById('progressFill').style.width = '0%';
+            
+            // Show upload section again
             document.getElementById('uploadSection').style.display = 'block';
             document.getElementById('processingSection').style.display = 'none';
         }
